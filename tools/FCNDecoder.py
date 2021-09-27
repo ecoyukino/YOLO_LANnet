@@ -27,8 +27,9 @@ class FCNDecoder(nn.Module):
 
     def forward(self, encode_data):
         print("encode_data = ", encode_data.shape)
-        print("forward...")
+        print("forward......")
         ret = {}
+    
         input_tensor = encode_data[self._decode_layers[0]]
         #input_tensor = encode_data
         #input_tensor.to(DEVICE)
