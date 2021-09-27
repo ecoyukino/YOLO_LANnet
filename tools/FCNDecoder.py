@@ -34,15 +34,11 @@ class FCNDecoder(nn.Module):
         #input_tensor = encode_data
         #input_tensor.to(DEVICE)
         score = self._conv_layers[0](input_tensor)
-        print("score.shape = ",score.shape)
+      
         for i, layer in enumerate(self._decode_layers[1:]):
             deconv = self._deconv(score)
-
             input_tensor = encode_data[layer]
-            print("score.shape = ",score.shape)
             score = self._conv_layers[i](input_tensor)
-            print("score.shape = ",score.shape)
-            print("deconv.shape",deconv.shape)
             fused = torch.add(deconv, score)
             score = fused
 
