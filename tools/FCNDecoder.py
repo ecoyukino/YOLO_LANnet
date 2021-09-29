@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from PIL import Image, ImageDraw
-
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 class FCNDecoder(nn.Module):
     def __init__(self, decode_layers, decode_channels=[], decode_last_stride=8):
         super(FCNDecoder, self).__init__()
@@ -15,6 +15,7 @@ class FCNDecoder(nn.Module):
 
         self._conv_layers = []
         for _ch in self._decode_channels:
+            print("self._conv_layers 的 device = ",DEVICE)
             self._conv_layers.append(nn.Conv2d(_ch, self._out_channel, kernel_size=1, bias=False))
 
         self._conv_final = nn.Conv2d(self._out_channel, 2, kernel_size=1, bias=False)
@@ -28,11 +29,13 @@ class FCNDecoder(nn.Module):
     def forward(self, encode_data):
         ret = {}
         input_tensor = encode_data[0]
-        #input_tensor.to(DEVICE)
+        #input_tensor = input_tensor.cuda()
+        #print("input_tensor 的type = ",type(input_tensor))
         score = self._conv_layers[0](input_tensor)
         for i in range(1,3):
             deconv = self._deconv(score)
             input_tensor = encode_data[i]
+            #input_tensor = input_tensor.to(DEVICE)
             score = self._conv_layers[i-1](input_tensor)
             fused = torch.add(deconv, score)
             score = fused

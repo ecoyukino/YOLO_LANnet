@@ -109,17 +109,18 @@ def main():
     # start_time = time.time()
     print("begin to bulid up model...")
     # DP mode
-    device = select_device(logger, batch_size=cfg.TRAIN.BATCH_SIZE_PER_GPU* len(cfg.GPUS)) if not cfg.DEBUG \
-        else select_device(logger, 'cpu')
-
+    #device = select_device(logger, batch_size=cfg.TRAIN.BATCH_SIZE_PER_GPU* len(cfg.GPUS)) if not cfg.DEBUG \
+    #    else select_device(logger, 'cpu')
+    device = torch.device('cpu')
     if args.local_rank != -1:
         assert torch.cuda.device_count() > args.local_rank
         torch.cuda.set_device(args.local_rank)
-        device = torch.device('cuda', args.local_rank)
+        device = torch.device('cpu', args.local_rank)
         dist.init_process_group(backend='nccl', init_method='env://')  # distributed backend
     
     print("load model to device")
     model = get_net(cfg).to(device)
+    print("get_net(cfg) = ",device)
     # print("load finished")
     #model = model.to(device)
     # print("finish build model")
@@ -188,7 +189,7 @@ def main():
             logger.info("=> loaded checkpoint '{}' (epoch {})".format(
                 checkpoint_file, checkpoint['epoch']))
             #cfg.NEED_AUTOANCHOR = False     #disable autoanchor
-        # model = model.to(device)
+        model = model.to(device)
 
         if cfg.TRAIN.SEG_ONLY:  #Only train two segmentation branchs
             logger.info('freeze encoder and Det head...')
@@ -363,6 +364,14 @@ def main():
             # else:
             #     best_model = False
     else: #train_lanenet
+        if rank == -1 and torch.cuda.device_count() > 1:
+            model = torch.nn.DataParallel(model, device_ids=cfg.GPUS)
+            # model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).cuda()
+        # # DDP mode
+        if rank != -1:
+            model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank,find_unused_parameters=True)
+        #model = torch.nn.DataParallel(model, device_ids=[0])
+        print(device)
         _model = lanenet_train(model,device)
         model = _model
         print("---------------training end-----------------")

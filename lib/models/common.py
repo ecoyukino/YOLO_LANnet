@@ -13,6 +13,7 @@ def autopad(k, p=None):  # kernel, padding
     return p
 
 #user code---------------------------------------
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 class LaneNet(nn.Module):
     def __init__(self, C11,C12,O1,AHAHA =False):
         super(LaneNet, self).__init__()
@@ -26,17 +27,17 @@ class LaneNet(nn.Module):
         decode_channels = out_channels[:-len(decode_layers) - 1:-1]#[:-4:-1]
         decode_last_stride = 8
         self._decoder = FCNDecoder(decode_layers, decode_channels, decode_last_stride)
-        #self._decoder.to(decive)
+        self._decoder
 
-        self._pix_layer = nn.Conv2d(in_channels=64, out_channels=self.no_of_instances, kernel_size=1, bias=False)#.to(decive)
-        self.relu = nn.ReLU() #.to(decive)
+        self._pix_layer = nn.Conv2d(in_channels=64, out_channels=self.no_of_instances, kernel_size=1, bias=False)
+        self.relu = nn.ReLU()
 
     def forward(self, input_tensor):
         decode_ret = self._decoder(input_tensor)
 
         decode_logits = decode_ret['logits']
 
-        decode_logits = decode_logits#.to(decive)
+        decode_logits = decode_logits
 
         binary_seg_ret = torch.argmax(F.softmax(decode_logits, dim=1), dim=1, keepdim=True)
 

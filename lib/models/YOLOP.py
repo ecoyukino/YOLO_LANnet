@@ -75,7 +75,7 @@ YOLOP = [
 [ [9, 12, 16], LaneNet,[256, 512, 3, False]]#43 usercode 
 
 ]
-
+DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 #+ Da_Seg_Head_para_idx
 class MCnet(nn.Module):
     def __init__(self, block_cfg, **kwargs):#block_cfg = yolop
@@ -136,7 +136,9 @@ class MCnet(nn.Module):
         for i, block in enumerate(self.model):
             if block.from_ != -1:
                 x = cache[block.from_] if isinstance(block.from_, int) else [x if j == -1 else cache[j] for j in block.from_]       #calculate concat detect
+            #print("x.type = ",type(x))
             x = block(x)
+            #print("--complete--")
             if i in self.seg_out_idx:     #save driving area segment result
                 m=nn.Sigmoid()
                 out.append(m(x))
@@ -149,13 +151,8 @@ class MCnet(nn.Module):
             cache.append(x if block.index in self.save else None)
         out.insert(0,det_out)
         if i==self.lanenet_out_idx: 
-            print(
-                "--------------------ahaha-----------------------"
-                "------------------------------------------------"
-                "------------------------------------------------"
-                )
             out.append(lanenet_out)
-        print("out_len",len(out))
+        #print("out_len",len(out))
         return out
             
     

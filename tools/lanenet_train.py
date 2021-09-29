@@ -92,12 +92,9 @@ def train(train_loader, model, optimizer, epoch, device):
         image_data = Variable(batch[0]).type(torch.FloatTensor).to(DEVICE)
         binary_label = Variable(batch[1]).type(torch.LongTensor).to(DEVICE)
         instance_label = Variable(batch[2]).type(torch.FloatTensor).to(DEVICE)
-        image_data = image_data.to(DEVICE)
+        
         # forward pass
-        print("----------net_output = model(image_data)----------")
-        print("DEVICE = ", type(DEVICE))
-        #image_data = image_data.cpu()
-        net_output = model(image_data)
+        net_output = model(image_data)[-1]
         
         # compute loss
         total_loss, binary_loss, instance_loss, out, train_iou = compute_loss(net_output, binary_label, instance_label)
@@ -162,7 +159,7 @@ def main(model,device):
     val_dataset_file = os.path.join(args.dataset, 'val.txt')
     train_dataset = LaneDataSet(train_dataset_file, transform=transforms.Compose([Rescale((640, 640))]))
     train_loader = DataLoader(train_dataset, batch_size=args.bs, shuffle=True)
-    model.to(DEVICE)
+    #model.to(DEVICE)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     print(f"{args.epochs} epochs {len(train_dataset)} training samples\n")
