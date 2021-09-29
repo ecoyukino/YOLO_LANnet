@@ -26,23 +26,15 @@ class FCNDecoder(nn.Module):
                                                 padding=4, bias=False)
 
     def forward(self, encode_data):
-        print("encode_data_len = ", len(encode_data))
-        print("forward...")
         ret = {}
         input_tensor = encode_data[0]
         #input_tensor.to(DEVICE)
-        print("encode_data[0].shape",input_tensor.shape)
         score = self._conv_layers[0](input_tensor)
         for i in range(1,3):
             print("i = ",i)
             deconv = self._deconv(score)
             input_tensor = encode_data[i]
-            print("next--------")
-            print("input_tensor.shape",input_tensor.shape)
             score = self._conv_layers[i-1](input_tensor)
-            print("add------")
-            print("score.shape = ",score.shape)
-            print("deconv.shape=",deconv.shape)
             fused = torch.add(deconv, score)
             score = fused
 

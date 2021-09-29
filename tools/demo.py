@@ -28,6 +28,8 @@ from lib.utils import plot_one_box,show_seg_result
 from lib.core.function import AverageMeter
 from lib.core.postprocess import morphological_process
 from tqdm import tqdm
+from lib.models.YOLOP import YOLOP
+from lib.models.common import LaneNet
 normalize = transforms.Normalize(
         mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
     )
@@ -51,14 +53,18 @@ def detect(cfg,opt):
 
     # Load model
     print("loading model...")
+    print("YOLO_LEN = ",len(YOLOP))
     model = get_net(cfg)
     checkpoint = torch.load(opt.weights, map_location= device)
     model.load_state_dict(checkpoint['state_dict'])
     model = model.to(device)
+    #usercode---
+    print("YOLO_LEN = ",len(YOLOP))
+    #-----------
     if half:
         model.half()  # to FP16
 
-    # Set Dataloader
+    # Set Dataloader ------------------------------------
     print("Seting Dataloader...")
     if opt.source.isnumeric():
         cudnn.benchmark = True  # set True to speed up constant image size inference
@@ -88,9 +94,6 @@ def detect(cfg,opt):
     
     for i, (path, img, img_det, vid_cap,shapes) in tqdm(enumerate(dataset),total = len(dataset)):
         print("start.... {}".format(i))
-        cv2.imshow("show",img)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
         img = transform(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         if img.ndimension() == 3:
@@ -98,8 +101,12 @@ def detect(cfg,opt):
         # Inference
         t1 = time_synchronized()
         lanenet_out = []
-        det_out, da_seg_out,ll_seg_out,lanenet_out= model(img)
-        print("lanenet_out = ",lanenet_out)
+        try:
+            det_out, da_seg_out,ll_seg_out,lanenet_out= model(img)
+            print("lanenet_out = ",lanenet_out)
+        except:
+            det_out, da_seg_out,ll_seg_out= model(img)
+        
         t2 = time_synchronized()
         if i == 0:
             print(det_out)

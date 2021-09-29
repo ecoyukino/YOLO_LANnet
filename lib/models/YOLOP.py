@@ -72,8 +72,7 @@ YOLOP = [
 [ -1, BottleneckCSP, [16, 8, 1, False]],    #40
 [ -1, Upsample, [None, 2, 'nearest']],  #41
 [ -1, Conv, [8, 2, 3, 1]], #42 Lane line segmentation head
-
-[ [9,12,16], LaneNet,[256, 512, 3, False]]#43 usercode 
+[ [9, 12, 16], LaneNet,[256, 512, 3, False]]#43 usercode 
 
 ]
 
@@ -89,7 +88,7 @@ class MCnet(nn.Module):
         self.seg_out_idx = block_cfg[0][1:3]
         #usercode
         self.neck_out_idx = block_cfg[0][-2]
-        self.instance_out_idx = block_cfg[0][-1]
+        self.lanenet_out_idx = block_cfg[0][-1]
         # Build model
         for i, (from_, block, args) in enumerate(block_cfg[1:]): 
             #e.g:[ -1, Focus, [3, 32, 3]] #0 => 
@@ -114,7 +113,10 @@ class MCnet(nn.Module):
             #     print (x.shape)
             with torch.no_grad():
                 model_out = self.forward(torch.zeros(1, 3, s, s))
-                detects, _, _= model_out
+                try:
+                    detects, _, _, _= model_out
+                except:
+                    detects, _, _= model_out
                 Detector.stride = torch.tensor([s / x.shape[-2] for x in detects])  # forward
             # print("stride"+str(Detector.stride ))
             Detector.anchors /= Detector.stride.view(-1, 1, 1)  # Set the anchors for the corresponding scale
@@ -135,22 +137,26 @@ class MCnet(nn.Module):
             if block.from_ != -1:
                 x = cache[block.from_] if isinstance(block.from_, int) else [x if j == -1 else cache[j] for j in block.from_]       #calculate concat detect
             x = block(x)
-            try:
-                print("Net idx = {},output.shape = {}".format(i,x.shape))
-            except:
-                print("Net idx = {},output(list) = {}".format(i,"x"))
             if i in self.seg_out_idx:     #save driving area segment result
                 m=nn.Sigmoid()
                 out.append(m(x))
             if i == self.detector_index:
                 det_out = x
-            #usercode----------------
-            if i == self.instance_out_idx:
+            #user code--------
+            if i == self.lanenet_out_idx:
                 lanenet_out = x
-            #------------------------
+            #-----------------
             cache.append(x if block.index in self.save else None)
         out.insert(0,det_out)
-        return out,instance_out
+        if i==self.lanenet_out_idx: 
+            print(
+                "--------------------ahaha-----------------------"
+                "------------------------------------------------"
+                "------------------------------------------------"
+                )
+            out.append(lanenet_out)
+        print("out_len",len(out))
+        return out
             
     
     def _initialize_biases(self, cf=None):  # initialize biases into Detect(), cf is class frequency

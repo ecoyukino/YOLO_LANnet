@@ -33,7 +33,8 @@ from lib.utils.utils import get_optimizer
 from lib.utils.utils import save_checkpoint
 from lib.utils.utils import create_logger, select_device
 from lib.utils import run_anchor
-
+#usercode-------------------
+from lanenet_train import lanenet_train
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train Multitask network')
@@ -55,7 +56,7 @@ def parse_args():
     parser.add_argument('--dataDir',
                         help='data directory',
                         type=str,
-                        default='')
+                        default='./tusimple/gt_image')
     parser.add_argument('--prevModelDir',
                         help='prev Model directory',
                         type=str,
@@ -249,142 +250,146 @@ def main():
                     print('freezing %s' % k)
                     v.requires_grad = False
         #------------------------------------------
-    if rank == -1 and torch.cuda.device_count() > 1:
-        model = torch.nn.DataParallel(model, device_ids=cfg.GPUS)
-        # model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).cuda()
-    # # DDP mode
-    if rank != -1:
-        model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank,find_unused_parameters=True)
+    if not cfg.TRAIN.LANENET_ONLY:
+        if rank == -1 and torch.cuda.device_count() > 1:
+            model = torch.nn.DataParallel(model, device_ids=cfg.GPUS)
+            # model = torch.nn.DataParallel(model, device_ids=cfg.GPUS).cuda()
+        # # DDP mode
+        if rank != -1:
+            model = DDP(model, device_ids=[args.local_rank], output_device=args.local_rank,find_unused_parameters=True)
 
 
-    # assign model params
-    model.gr = 1.0
-    model.nc = 1
-    # print('bulid model finished')
+        # assign model params
+        model.gr = 1.0
+        model.nc = 1
+        # print('bulid model finished')
 
-    print("begin to load data")
-    # Data loading
-    normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-    )
+        print("begin to load data")
+        # Data loading
+        normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        )
 
-    train_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
-        cfg=cfg,
-        is_train=True,
-        inputsize=cfg.MODEL.IMAGE_SIZE,
-        transform=transforms.Compose([
-            transforms.ToTensor(),
-            normalize,
-        ])
-    )
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset) if rank != -1 else None
-
-    train_loader = DataLoaderX(
-        train_dataset,
-        batch_size=cfg.TRAIN.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
-        shuffle=(cfg.TRAIN.SHUFFLE & rank == -1),
-        num_workers=cfg.WORKERS,
-        sampler=train_sampler,
-        pin_memory=cfg.PIN_MEMORY,
-        collate_fn=dataset.AutoDriveDataset.collate_fn
-    )
-    num_batch = len(train_loader)
-
-    if rank in [-1, 0]:
-        valid_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+        train_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
             cfg=cfg,
-            is_train=False,
+            is_train=True,
             inputsize=cfg.MODEL.IMAGE_SIZE,
             transform=transforms.Compose([
                 transforms.ToTensor(),
                 normalize,
             ])
         )
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset) if rank != -1 else None
 
-        valid_loader = DataLoaderX(
-            valid_dataset,
-            batch_size=cfg.TEST.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
-            shuffle=False,
+        train_loader = DataLoaderX(
+            train_dataset,
+            batch_size=cfg.TRAIN.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
+            shuffle=(cfg.TRAIN.SHUFFLE & rank == -1),
             num_workers=cfg.WORKERS,
+            sampler=train_sampler,
             pin_memory=cfg.PIN_MEMORY,
             collate_fn=dataset.AutoDriveDataset.collate_fn
         )
-        print('load data finished')
-    
-    if rank in [-1, 0]:
-        if cfg.NEED_AUTOANCHOR:
-            logger.info("begin check anchors")
-            run_anchor(logger,train_dataset, model=model, thr=cfg.TRAIN.ANCHOR_THRESHOLD, imgsz=min(cfg.MODEL.IMAGE_SIZE))
-        else:
-            logger.info("anchors loaded successfully")
-            det = model.module.model[model.module.detector_index] if is_parallel(model) \
-                else model.model[model.detector_index]
-            logger.info(str(det.anchors))
+        num_batch = len(train_loader)
 
-    # training
-    num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 1000)
-    scaler = amp.GradScaler(enabled=device.type != 'cpu')
-    print('=> start training...')
-    for epoch in range(begin_epoch+1, cfg.TRAIN.END_EPOCH+1):
-        if rank != -1:
-            train_loader.sampler.set_epoch(epoch)
-        # train for one epoch
-        train(cfg, train_loader, model, criterion, optimizer, scaler,
-              epoch, num_batch, num_warmup, writer_dict, logger, device, rank)
-        
-        lr_scheduler.step()
-
-        # evaluate on validation set
-        if (epoch % cfg.TRAIN.VAL_FREQ == 0 or epoch == cfg.TRAIN.END_EPOCH) and rank in [-1, 0]:
-            # print('validate')
-            da_segment_results,ll_segment_results,detect_results, total_loss,maps, times = validate(
-                epoch,cfg, valid_loader, valid_dataset, model, criterion,
-                final_output_dir, tb_log_dir, writer_dict,
-                logger, device, rank
+        if rank in [-1, 0]:
+            valid_dataset = eval('dataset.' + cfg.DATASET.DATASET)(
+                cfg=cfg,
+                is_train=False,
+                inputsize=cfg.MODEL.IMAGE_SIZE,
+                transform=transforms.Compose([
+                    transforms.ToTensor(),
+                    normalize,
+                ])
             )
-            fi = fitness(np.array(detect_results).reshape(1, -1))  #目标检测评价指标
 
-            msg = 'Epoch: [{0}]    Loss({loss:.3f})\n' \
-                      'Driving area Segment: Acc({da_seg_acc:.3f})    IOU ({da_seg_iou:.3f})    mIOU({da_seg_miou:.3f})\n' \
-                      'Lane line Segment: Acc({ll_seg_acc:.3f})    IOU ({ll_seg_iou:.3f})  mIOU({ll_seg_miou:.3f})\n' \
-                      'Detect: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n'\
-                      'Time: inference({t_inf:.4f}s/frame)  nms({t_nms:.4f}s/frame)'.format(
-                          epoch,  loss=total_loss, da_seg_acc=da_segment_results[0],da_seg_iou=da_segment_results[1],da_seg_miou=da_segment_results[2],
-                          ll_seg_acc=ll_segment_results[0],ll_seg_iou=ll_segment_results[1],ll_seg_miou=ll_segment_results[2],
-                          p=detect_results[0],r=detect_results[1],map50=detect_results[2],map=detect_results[3],
-                          t_inf=times[0], t_nms=times[1])
-            logger.info(msg)
+            valid_loader = DataLoaderX(
+                valid_dataset,
+                batch_size=cfg.TEST.BATCH_SIZE_PER_GPU * len(cfg.GPUS),
+                shuffle=False,
+                num_workers=cfg.WORKERS,
+                pin_memory=cfg.PIN_MEMORY,
+                collate_fn=dataset.AutoDriveDataset.collate_fn
+            )
+            print('load data finished')
+        
+        if rank in [-1, 0]:
+            if cfg.NEED_AUTOANCHOR:
+                logger.info("begin check anchors")
+                run_anchor(logger,train_dataset, model=model, thr=cfg.TRAIN.ANCHOR_THRESHOLD, imgsz=min(cfg.MODEL.IMAGE_SIZE))
+            else:
+                logger.info("anchors loaded successfully")
+                det = model.module.model[model.module.detector_index] if is_parallel(model) \
+                    else model.model[model.detector_index]
+                logger.info(str(det.anchors))
+
+        # training
+        num_warmup = max(round(cfg.TRAIN.WARMUP_EPOCHS * num_batch), 1000)
+        scaler = amp.GradScaler(enabled=device.type != 'cpu')
+        print('=> start training...')
+        for epoch in range(begin_epoch+1, cfg.TRAIN.END_EPOCH+1):
+            if rank != -1:
+                train_loader.sampler.set_epoch(epoch)
+            # train for one epoch
+            train(cfg, train_loader, model, criterion, optimizer, scaler,
+                epoch, num_batch, num_warmup, writer_dict, logger, device, rank)
+            
+            lr_scheduler.step()
+
+            # evaluate on validation set
+            if (epoch % cfg.TRAIN.VAL_FREQ == 0 or epoch == cfg.TRAIN.END_EPOCH) and rank in [-1, 0]:
+                # print('validate')
+                da_segment_results,ll_segment_results,detect_results, total_loss,maps, times = validate(
+                    epoch,cfg, valid_loader, valid_dataset, model, criterion,
+                    final_output_dir, tb_log_dir, writer_dict,
+                    logger, device, rank
+                )
+                fi = fitness(np.array(detect_results).reshape(1, -1))  #目标检测评价指标
+
+                msg = 'Epoch: [{0}]    Loss({loss:.3f})\n' \
+                        'Driving area Segment: Acc({da_seg_acc:.3f})    IOU ({da_seg_iou:.3f})    mIOU({da_seg_miou:.3f})\n' \
+                        'Lane line Segment: Acc({ll_seg_acc:.3f})    IOU ({ll_seg_iou:.3f})  mIOU({ll_seg_miou:.3f})\n' \
+                        'Detect: P({p:.3f})  R({r:.3f})  mAP@0.5({map50:.3f})  mAP@0.5:0.95({map:.3f})\n'\
+                        'Time: inference({t_inf:.4f}s/frame)  nms({t_nms:.4f}s/frame)'.format(
+                            epoch,  loss=total_loss, da_seg_acc=da_segment_results[0],da_seg_iou=da_segment_results[1],da_seg_miou=da_segment_results[2],
+                            ll_seg_acc=ll_segment_results[0],ll_seg_iou=ll_segment_results[1],ll_seg_miou=ll_segment_results[2],
+                            p=detect_results[0],r=detect_results[1],map50=detect_results[2],map=detect_results[3],
+                            t_inf=times[0], t_nms=times[1])
+                logger.info(msg)
 
             # if perf_indicator >= best_perf:
             #     best_perf = perf_indicator
             #     best_model = True
             # else:
             #     best_model = False
-
+    else: #train_lanenet
+        _model = lanenet_train(model,device)
+        model = _model
+        print("---------------training end-----------------")
         # save checkpoint model and best model
-        if rank in [-1, 0]:
-            savepath = os.path.join(final_output_dir, f'epoch-{epoch}.pth')
-            logger.info('=> saving checkpoint to {}'.format(savepath))
-            save_checkpoint(
-                epoch=epoch,
-                name=cfg.MODEL.NAME,
-                model=model,
-                # 'best_state_dict': model.module.state_dict(),
-                # 'perf': perf_indicator,
-                optimizer=optimizer,
-                output_dir=final_output_dir,
-                filename=f'epoch-{epoch}.pth'
-            )
-            save_checkpoint(
-                epoch=epoch,
-                name=cfg.MODEL.NAME,
-                model=model,
-                # 'best_state_dict': model.module.state_dict(),
-                # 'perf': perf_indicator,
-                optimizer=optimizer,
-                output_dir=os.path.join(cfg.LOG_DIR, cfg.DATASET.DATASET),
-                filename='checkpoint.pth'
-            )
+    if rank in [-1, 0]:
+        savepath = os.path.join(final_output_dir, f'epoch-{epoch}.pth')
+        logger.info('=> saving checkpoint to {}'.format(savepath))
+        save_checkpoint(
+            epoch=epoch,
+            name=cfg.MODEL.NAME,
+            model=model,
+            # 'best_state_dict': model.module.state_dict(),
+            # 'perf': perf_indicator,
+            optimizer=optimizer,
+            output_dir=final_output_dir,
+            filename=f'epoch-{epoch}.pth'
+        )
+        save_checkpoint(
+            epoch=epoch,
+            name=cfg.MODEL.NAME,
+            model=model,
+            # 'best_state_dict': model.module.state_dict(),
+            # 'perf': perf_indicator,
+            optimizer=optimizer,
+            output_dir=os.path.join(cfg.LOG_DIR, cfg.DATASET.DATASET),
+            filename='checkpoint.pth'
+        )
 
     # save final model
     if rank in [-1, 0]:

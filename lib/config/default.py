@@ -40,6 +40,7 @@ _C.LOSS.FL_GAMMA = 0.0  # focal loss gamma
 _C.LOSS.CLS_POS_WEIGHT = 1.0  # classification loss positive weights
 _C.LOSS.OBJ_POS_WEIGHT = 1.0  # object loss positive weights
 _C.LOSS.SEG_POS_WEIGHT = 1.0  # segmentation loss positive weights
+_C.LOSS.LANENET_POS_WEIGHT = 1.0 # lanenet loss positive weights (usercode)
 _C.LOSS.BOX_GAIN = 0.05  # box loss gain
 _C.LOSS.CLS_GAIN = 0.5  # classification loss gain
 _C.LOSS.OBJ_GAIN = 1.0  # object loss gain
@@ -109,7 +110,7 @@ _C.TRAIN.ENC_DET_ONLY = False       # Only train encoder and detection branch
 _C.TRAIN.DRIVABLE_ONLY = False      # Only train da_segmentation task
 _C.TRAIN.LANE_ONLY = False          # Only train ll_segmentation task
 _C.TRAIN.DET_ONLY = False          # Only train detection task
-_C.TRAIN.LANENET_ONLY = False       # Only train encoder and instance segmantation branch(user code)
+_C.TRAIN.LANENET_ONLY = True       # Only train encoder and instance segmantation branch(user code)
 
 
 
