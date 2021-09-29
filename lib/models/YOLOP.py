@@ -73,7 +73,7 @@ YOLOP = [
 [ -1, Upsample, [None, 2, 'nearest']],  #41
 [ -1, Conv, [8, 2, 3, 1]], #42 Lane line segmentation head
 
-[ 16, LaneNet,[256, 256, 3, False]]#43 usercode 
+[ [9,12,16], LaneNet,[256, 512, 3, False]]#43 usercode 
 
 ]
 
@@ -135,6 +135,10 @@ class MCnet(nn.Module):
             if block.from_ != -1:
                 x = cache[block.from_] if isinstance(block.from_, int) else [x if j == -1 else cache[j] for j in block.from_]       #calculate concat detect
             x = block(x)
+            try:
+                print("Net idx = {},output.shape = {}".format(i,x.shape))
+            except:
+                print("Net idx = {},output(list) = {}".format(i,"x"))
             if i in self.seg_out_idx:     #save driving area segment result
                 m=nn.Sigmoid()
                 out.append(m(x))

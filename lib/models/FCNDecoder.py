@@ -9,7 +9,7 @@ class FCNDecoder(nn.Module):
         super(FCNDecoder, self).__init__()
         #decode_channels = [512, 512, 256]
         #decode_layers = ["pool5", "pool4", "pool3"]
-        self._decode_channels = [256, 256]
+        self._decode_channels = [512, 256]
         self._out_channel = 64
         self._decode_layers = decode_layers
 
@@ -26,19 +26,23 @@ class FCNDecoder(nn.Module):
                                                 padding=4, bias=False)
 
     def forward(self, encode_data):
-        print("encode_data = ", encode_data.shape)
+        print("encode_data_len = ", len(encode_data))
         print("forward...")
         ret = {}
-        #input_tensor = encode_data[self._decode_layers[0]]
-        input_tensor = encode_data
+        input_tensor = encode_data[0]
         #input_tensor.to(DEVICE)
+        print("encode_data[0].shape",input_tensor.shape)
         score = self._conv_layers[0](input_tensor)
-        for i, layer in enumerate(self._decode_layers[1:]):
+        for i in range(1,3):
+            print("i = ",i)
             deconv = self._deconv(score)
-
-            #input_tensor = encode_data[layer]
-            score = self._conv_layers[i](input_tensor)
-
+            input_tensor = encode_data[i]
+            print("next--------")
+            print("input_tensor.shape",input_tensor.shape)
+            score = self._conv_layers[i-1](input_tensor)
+            print("add------")
+            print("score.shape = ",score.shape)
+            print("deconv.shape=",deconv.shape)
             fused = torch.add(deconv, score)
             score = fused
 
